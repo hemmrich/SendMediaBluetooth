@@ -1,11 +1,9 @@
 package com.example.cbluetoothtest;
 
-import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.net.URI;
+import java.lang.reflect.Field;
 import java.util.Calendar;
 import java.util.UUID;
 
@@ -20,7 +18,6 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
@@ -30,6 +27,7 @@ import android.widget.AdapterView.OnItemClickListener;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.ListView;
+import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -40,18 +38,37 @@ public class MainActivity extends Activity implements OnClickListener, OnItemCli
 	private Button b1;
 	private TextView tv1, tv2;
 	private ListView lv1;
+	private Spinner spinner;
 	private ArrayAdapter<BluetoothDevice> adapter;
+	private ArrayAdapter<String> spinnerAdapter;
+	private String[] spinnerItems;
 	private UUID uuid;
+	private OutputStream btOstream;
+	private boolean receiverRegistered;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        bSocket = null;
+        receiverRegistered = false;
         
         b1 = (Button) findViewById(R.id.button1);
         tv1 = (TextView) findViewById(R.id.textView1);
         tv2 = (TextView) findViewById(R.id.textView2);
         lv1 = (ListView) findViewById(R.id.listView1);
+        spinner = (Spinner) findViewById(R.id.spinner1);
+        	
+        Field[] drawables = com.example.cbluetoothtest.R.drawable.class.getFields();
+        spinnerItems = new String[drawables.length];
+        int counter = 0;
+        for(Field f : drawables) {
+        	spinnerItems[counter++] = f.getName();
+        }
+        spinnerAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, spinnerItems);
+        spinner.setAdapter(spinnerAdapter);
+        spinner.setSelection(0);
+        
         
         adapter = new ArrayAdapter<BluetoothDevice>(this, android.R.layout.simple_list_item_1);
         uuid = UUID.fromString("00001101-0000-1000-8000-00805f9b34fb");
@@ -68,6 +85,8 @@ public class MainActivity extends Activity implements OnClickListener, OnItemCli
 		btAdapter.enable();
 		Log.e("BT", "adapter enabled");
 		
+		adapter.clear();
+		adapter.notifyDataSetChanged();
 		btAdapter.startDiscovery();
 		BroadcastReceiver btReceiver = new BroadcastReceiver() {
 			@Override
@@ -84,8 +103,12 @@ public class MainActivity extends Activity implements OnClickListener, OnItemCli
 				}				
 			}			
 		};
-		IntentFilter filter = new IntentFilter(BluetoothDevice.ACTION_FOUND);
-		registerReceiver(btReceiver, filter);
+		if(!receiverRegistered) {
+			IntentFilter filter = new IntentFilter(BluetoothDevice.ACTION_FOUND);
+			registerReceiver(btReceiver, filter);
+			receiverRegistered = true;
+		}
+		
 	}
 
 	@SuppressLint("NewApi")
@@ -99,52 +122,61 @@ public class MainActivity extends Activity implements OnClickListener, OnItemCli
 		btAdapter.cancelDiscovery();
 		BluetoothDevice device = (BluetoothDevice) parent.getItemAtPosition(position);
 		
-		try {
-			bSocket = device.createRfcommSocketToServiceRecord(uuid);
-			Log.e("BT", "Created insecure rfcomm socket");
-		} catch (IOException e) {
-			Log.e("BT", "EXCEPTION IN CREATE SOCKET");
+		if(bSocket == null) {
+			try {
+				bSocket = device.createRfcommSocketToServiceRecord(uuid);
+				Log.e("BT", "Created insecure rfcomm socket");
+			} catch (IOException e) {
+				Log.e("BT", "EXCEPTION IN CREATE SOCKET");
+			}
 		}
 		
 		try {
-			bSocket.connect();
-			Log.e("BT", "bSocket connected!");
-			Toast.makeText(getApplicationContext(), "SOCKET CONNECTED!!!!", Toast.LENGTH_LONG).show();
-			tv1.setText("Connected to " + device.getName());
-			tv1.invalidate();
+			if(!bSocket.isConnected()) {
+				bSocket.connect();
+				Log.e("BT", "bSocket connected!");
+				Toast.makeText(getApplicationContext(), "SOCKET CONNECTED!!!!", Toast.LENGTH_LONG).show();
+				tv1.setText("Connected to " + device.getName());
+				tv1.invalidate();
 			
-			InputStream is = bSocket.getInputStream();
-			int data;
-			String text = "";
-			
-			while((data = is.read()) != -1 || data != 126) {
-				if(data == -1 || data == 126) {
-					break;
-				} else {
-					char c = (char) data;
-					Log.e("BT", c + "");
-					text += c;
+				InputStream is = bSocket.getInputStream();
+				btOstream = bSocket.getOutputStream();
+				int data;
+				String text = "";
+				
+				while((data = is.read()) != -1 || data != 126) {
+					if(data == -1 || data == 126) {
+						break;
+					} else {
+						char c = (char) data;
+						Log.e("BT", c + "");
+						text += c;
+					}
 				}
-			}
 			
-			Log.e("BT", "Text: " + text);
-			Toast.makeText(getApplicationContext(), text, Toast.LENGTH_LONG).show();
-			tv2.setText(text);
-			tv2.invalidate();
+				Log.e("BT", "Text: " + text);
+				Toast.makeText(getApplicationContext(), text, Toast.LENGTH_LONG).show();
+				tv2.setText(text);
+				tv2.invalidate();
+			}
 			
 			Thread.sleep(5);			
 			
 			Calendar c = Calendar.getInstance();
 			long time1 = c.getTimeInMillis();
 			
-			InputStream fis = getResources().openRawResource(R.drawable.fuseimg);
+			String resourceName = spinnerItems[(int) spinner.getSelectedItemId()];
+			int resId = this.getResources().getIdentifier("com.example.cbluetoothtest:drawable/" + resourceName, null, null);
+			Log.e("BT", "resName = " + resourceName + ", resId = " + resId);
+			
+			InputStream fis = getResources().openRawResource(resId);
 			byte[] imgArray = new byte[fis.available()];
 			fis.read(imgArray);
-			OutputStream os = bSocket.getOutputStream();
 			
-			os.write(intToByteArray(imgArray.length));
+			
+			btOstream.write(intToByteArray(imgArray.length));
 			Log.e("BT", "Converted! Sending " + imgArray.length + " bytes now...");			
-			os.write(imgArray);
+			btOstream.write(imgArray);
 			Log.e("BT", "Sent image byte array!");
 			
 			c = Calendar.getInstance();
