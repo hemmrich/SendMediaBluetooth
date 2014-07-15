@@ -9,6 +9,7 @@ import java.util.UUID;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.app.ProgressDialog;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothClass;
 import android.bluetooth.BluetoothDevice;
@@ -20,6 +21,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.Bundle;
 import android.util.Log;
+import android.util.TypedValue;
 import android.view.View;
 import android.view.View.OnClickListener;
 import android.widget.AdapterView;
@@ -121,6 +123,7 @@ public class MainActivity extends Activity implements OnClickListener, OnItemCli
 		
 		btAdapter.cancelDiscovery();
 		BluetoothDevice device = (BluetoothDevice) parent.getItemAtPosition(position);
+		ProgressDialog progDialog = new ProgressDialog(MainActivity.this);
 		
 		if(bSocket == null) {
 			try {
@@ -135,7 +138,6 @@ public class MainActivity extends Activity implements OnClickListener, OnItemCli
 			if(!bSocket.isConnected()) {
 				bSocket.connect();
 				Log.e("BT", "bSocket connected!");
-				Toast.makeText(getApplicationContext(), "SOCKET CONNECTED!!!!", Toast.LENGTH_LONG).show();
 				tv1.setText("Connected to " + device.getName());
 				tv1.invalidate();
 			
@@ -149,13 +151,12 @@ public class MainActivity extends Activity implements OnClickListener, OnItemCli
 						break;
 					} else {
 						char c = (char) data;
-						Log.e("BT", c + "");
+						//Log.e("BT", c + "");
 						text += c;
 					}
 				}
 			
 				Log.e("BT", "Text: " + text);
-				Toast.makeText(getApplicationContext(), text, Toast.LENGTH_LONG).show();
 				tv2.setText(text);
 				tv2.invalidate();
 			}
@@ -169,15 +170,34 @@ public class MainActivity extends Activity implements OnClickListener, OnItemCli
 			int resId = this.getResources().getIdentifier("com.example.cbluetoothtest:drawable/" + resourceName, null, null);
 			Log.e("BT", "resName = " + resourceName + ", resId = " + resId);
 			
+			TypedValue val = new TypedValue();
+			this.getResources().getValue(resId, val, true);
+			String fullFilename = val.string.toString();
+			Log.e("BT", "Full filename: " + val.string.toString());
+			//inform server if media is image or video
+			if(fullFilename.endsWith(".mp4")) {
+				btOstream.write(255);
+				Log.e("BT", "Sent 255");
+			} else {
+				btOstream.write(0);
+				Log.e("BT", "Sent 0");
+			}
+			
+			
+			
+			
+			progDialog = ProgressDialog.show(MainActivity.this, "File Transfer", "Opening media file");			
 			InputStream fis = getResources().openRawResource(resId);
 			byte[] imgArray = new byte[fis.available()];
-			fis.read(imgArray);
+			progDialog.setMessage("Converting media file to byte array");
+			fis.read(imgArray);			
 			
-			
+			progDialog.setMessage("Sending media byte array!");
 			btOstream.write(intToByteArray(imgArray.length));
 			Log.e("BT", "Converted! Sending " + imgArray.length + " bytes now...");			
 			btOstream.write(imgArray);
 			Log.e("BT", "Sent image byte array!");
+			progDialog.dismiss();
 			
 			c = Calendar.getInstance();
 			long time2 = c.getTimeInMillis();
@@ -192,6 +212,8 @@ public class MainActivity extends Activity implements OnClickListener, OnItemCli
 			Log.e("BT", "EXCEPTION IN CONNECT");
 			Toast.makeText(getApplicationContext(), "socket connection failed", Toast.LENGTH_LONG).show();
 			e.printStackTrace();
+		} finally {
+			progDialog.dismiss();
 		}
 	}
 	
@@ -201,10 +223,8 @@ public class MainActivity extends Activity implements OnClickListener, OnItemCli
 		bytes[2] = (byte) ((i >> 8) & 0xFF);
 		bytes[1] = (byte) ((i >> 16) & 0xFF);
 		bytes[0] = (byte) ((i >> 24) & 0xFF);
-		Log.e("BT", "input size was: " + i);
 		
-		int size = (bytes[3] & 0xFF) + ((bytes[2] & 0xFF) << 8) + ((bytes[1] & 0xFF) << 16) + ((bytes[0] & 0xFF) << 24);
-		Log.e("BT", "byte array value: " + size);
+		//int size = (bytes[3] & 0xFF) + ((bytes[2] & 0xFF) << 8) + ((bytes[1] & 0xFF) << 16) + ((bytes[0] & 0xFF) << 24);
 		
 		return bytes;
 	}
